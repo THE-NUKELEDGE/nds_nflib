@@ -1,0 +1,126 @@
+#include <stdio.h>
+#include <nds.h>
+#include <filesystem.h>
+#include <nf_lib.h>
+
+class Mario {
+public:
+    float xpos = 31, ypos = 159;
+    float xspeed = 0, yspeed = 0;
+    float xaccel = 0;
+    float xmax = 2.5;
+    float xmax_sprint = xmax * 1.4;
+    float ymax = 4.3125;
+    float gravity = 0; // Testing
+    int direction = 1;
+    float tweak = 0.25;
+    bool onGround = true;
+
+    float accel_right = 0.0546875f; // Acceleration when moving right while standing still
+    float accel_left = -accel_right;  // Acceleration when moving left while standing still
+    float accel_right_move = 0.125f; // Acceleration when moving right while already in motion
+    float accel_left_move = -accel_right_move; // Acceleration when moving left while already in motion
+
+
+    void update() {
+        // Apply acceleration and speed changes
+        xspeed += xaccel;
+        yspeed += gravity;
+        xpos += xspeed;
+        ypos += yspeed;
+
+        // Limit speeds
+        if (xspeed > xmax) xspeed = xmax;
+        if (xspeed < -xmax) xspeed = -xmax;
+        if (yspeed > ymax) yspeed = ymax;
+
+        // Simplify standing still
+        if ((direction == 1 && xspeed < 0.01) || (direction == -1 && xspeed > -0.01)) {
+            xspeed = 0;
+        }
+
+        // Move Mario
+        NF_MoveSprite(0, 0, xpos, ypos);
+
+        // Flip Mario
+        if (direction == 1) {
+            NF_HflipSprite(0, 0, false);
+        } else if (direction == -1) {
+          NF_HflipSprite(0, 0, true);
+          }
+
+    }
+
+    void handleInput(uint16_t keys_held) {
+        if (keys_held & KEY_LEFT) {
+            if (xspeed == 0) direction = -1;
+            xaccel = (xspeed != 0) ? accel_left_move : accel_left;
+        }
+        else if (keys_held & KEY_RIGHT) {
+            if (xspeed == 0) direction = 1;
+            xaccel = (xspeed != 0) ? accel_right_move : accel_right;
+        }
+        else {
+            if (onGround) {
+                if (xspeed > 0) xaccel = accel_left;
+                else if (xspeed < 0) xaccel = accel_right;
+                else xaccel = 0;
+            }
+        }
+    }
+
+    void printState() {
+        printf("X: %.2f Y: %.2f XSpeed: %.2f YSpeed: %.2f Direction: %d\n", xpos, ypos, xspeed, yspeed, direction);
+    }
+
+};
+
+int main(int argc, char **argv) {
+
+    Mario mario;
+
+    consoleDemoInit();
+
+    nitroFSInit(NULL);
+    NF_SetRootFolder("NITROFS");
+
+    NF_Set2D(0, 0);
+    NF_InitTiledBgBuffers();    // Initialize storage buffers
+    NF_InitTiledBgSys(0);       // Top screen
+
+    NF_InitSpriteBuffers();     // Initialize storage buffers
+    NF_InitSpriteSys(0);        // Top screen
+
+    NF_LoadTiledBg("bg/bg2", "layer_3", 256, 256);
+    NF_CreateTiledBg(0, 3, "layer_3");
+
+    NF_LoadSpriteGfx("sprite/mario", 1, 16, 16);
+    NF_LoadSpritePal("sprite/mario", 1);
+
+    NF_VramSpriteGfx(0, 1, 0, true); // Ball: Keep all frames in VRAM
+    NF_VramSpritePal(0, 1, 0);
+
+    NF_CreateSprite(0, 0, 0, 0, 31, 159);
+
+    bool running = true;
+
+    while (running) {
+        scanKeys();
+
+        uint16_t keys_down = keysDown();
+        uint16_t keys_held = keysHeld();
+        uint16_t keys_up = keysUp();
+
+        mario.handleInput(keys_held);
+        mario.update();
+        mario.printState();
+
+        NF_SpriteOamSet(0);
+
+        swiWaitForVBlank();
+
+        oamUpdate(&oamMain);
+
+    }
+    return 0;
+}
